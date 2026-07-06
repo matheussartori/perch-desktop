@@ -5,16 +5,18 @@
  * a controller on the same network dials ws://<this-machine-ip>:PORT. Only the
  * WebRTC handshake flows through it — never audio, video, or input.
  *
- * It reuses the same SignalingServer that `npm run signal` deploys, so hosted
- * and embedded signaling behave identically.
+ * The SignalingServer it runs is the same implementation deployed to the cloud
+ * (see the ../perch-signaling-server repo, Docker-deployed), so hosted and
+ * embedded signaling behave identically. That server code lives here too because
+ * the packaged app embeds it for LAN pairing — kept byte-for-byte in sync by
+ * hand with the standalone repo.
  *
  * A bind failure (e.g. the port is already taken because another Perch is
  * hosting here) is logged and swallowed: a controller-only session dials a
  * remote rendezvous and never needs the local one.
  */
 import { RENDEZVOUS_PORT } from '@shared/bridge'
-// Reused verbatim from the standalone signaling server so both paths stay in sync.
-import { SignalingServer } from '../../signaling-server/src/SignalingServer'
+import { SignalingServer } from './SignalingServer'
 
 export async function startRendezvous(): Promise<void> {
   try {

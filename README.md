@@ -72,8 +72,9 @@ npm install
 npm run dev          # Electron + HMR. The rendezvous starts inside the app.
 ```
 
-You do **not** need to run a separate signaling server — it's embedded. (The
-standalone `npm run signal` still exists for hosted/internet deployments; see
+You do **not** need to run a separate signaling server — it's embedded. (A
+standalone build of that same server, for hosted/internet deployments, lives in
+the sibling [`perch-signaling-server`](../perch-signaling-server) repo; see
 [Signaling modes](#signaling-modes).)
 
 To try both roles on **one machine**: open two dev instances, host from one, and
@@ -158,7 +159,8 @@ VITE_ICE_SERVERS=[{"urls":"stun:..."},{"urls":"turn:...","username":"...","crede
 
 When `VITE_SIGNAL_URL` is set it wins for both host and controller (the typed
 address is ignored). Deployment steps for the standalone server (Docker, health
-checks, TURN) live in [`signaling-server/README.md`](signaling-server/README.md).
+checks, TURN) live in the sibling
+[`perch-signaling-server`](../perch-signaling-server) repo.
 
 ---
 
@@ -171,7 +173,7 @@ to `.env` to use:
 | --- | --- | --- |
 | `VITE_SIGNAL_URL` | *(unset → LAN mode)* | Hosted signaling URL; overrides LAN mode |
 | `VITE_ICE_SERVERS` | Google STUN only | JSON array of `RTCIceServer`; add TURN for cross-network |
-| `PORT` (server) | `8787` | Port for the standalone `npm run signal` |
+| `PORT` (server) | `8787` | Port for the standalone server (in the `perch-signaling-server` repo) |
 
 The embedded rendezvous port is fixed at `8787` (`RENDEZVOUS_PORT` in
 `src/shared/bridge.ts`), shared by main and renderer so they can't disagree.
@@ -198,8 +200,9 @@ Electron, WebRTC, or nut-js. Only ports (interfaces) cross the boundary.
 
 - `nut-js` OS input runs in the **main** process only (`NutJsInputController`).
 - WebRTC, screen capture, and the signaling *client* run in the **renderer**.
-- The signaling *rendezvous* (server) runs in **main** (`src/main/rendezvous.ts`),
-  reusing the same `SignalingServer` the standalone deploy uses.
+- The signaling *rendezvous* (server) runs in **main** (`src/main/rendezvous/`),
+  embedding the same `SignalingServer` the standalone cloud deploy uses (kept in
+  sync with the `perch-signaling-server` repo).
 - Composition root: `src/renderer/session/usePerchSession.ts` wires use cases to
   fresh adapters per session.
 
@@ -219,10 +222,10 @@ src/
     peer/            WebRtcMediaTransport (ICE servers from VITE_ICE_SERVERS)
     capture/         ScreenMediaSource
   main/            Electron main: window, IPC, OS input, embedded rendezvous
+    rendezvous/      Embedded WebSocket signaling server (relays handshake only)
   preload/         contextBridge → window.perch
   renderer/        React UI (composition root in session/usePerchSession)
   shared/          Result, Random, the IPC bridge contract, RENDEZVOUS_PORT
-signaling-server/  Standalone WebSocket rendezvous (Docker-deployable, relays signaling only)
 tests/             Vitest unit + integration suites (domain + application)
 ```
 
@@ -249,9 +252,9 @@ Roughly in priority order:
    end-to-end.
 2. **mDNS / Bonjour auto-discovery** so the controller finds the host by code
    alone, dropping the typed IP. Turns LAN pairing into pure code entry.
-3. **Internet mode**: deploy `signaling-server/` behind `wss://` + a TURN relay,
-   and ship a build with `VITE_SIGNAL_URL` / `VITE_ICE_SERVERS` set. See
-   [`signaling-server/README.md`](signaling-server/README.md).
+3. **Internet mode**: deploy the [`perch-signaling-server`](../perch-signaling-server)
+   repo behind `wss://` + a TURN relay, and ship a build with `VITE_SIGNAL_URL` /
+   `VITE_ICE_SERVERS` set. See that repo's README.
 4. **App icon + code signing / notarization** (macOS `mac.identity`, Windows
    cert) so builds open without the quarantine dance.
 5. **Multiple monitors** + monitor selection on the host.

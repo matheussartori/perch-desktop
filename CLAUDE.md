@@ -35,7 +35,10 @@ Portable, no-admin. v1: control mouse/keyboard + stream host audio & screen.
   Tokens in `src/renderer/styles/tokens.css`.
 
 ## Commands
-- `npm run signal` — local signaling server (:8787). Needed for the app to pair.
+- Pairing needs no separate server: the app runs an embedded rendezvous in the
+  main process (`src/main/rendezvous/`, port 8787). The standalone/cloud copy of
+  that same server lives in the sibling `../perch-signaling-server` repo
+  (Docker-deployed for internet pairing); keep the two byte-for-byte in sync.
 - `npm run dev` — Electron + HMR. `npm test` — domain/application suites.
 - `npm run dist:{mac,win,linux}` — portable builds.
 

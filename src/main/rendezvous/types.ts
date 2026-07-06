@@ -1,11 +1,13 @@
 /**
  * Local mirror of the app's signaling contract.
  *
- * WHY duplicate this instead of importing from `../../src`? The signaling
- * server is a separate deployable with its own lifecycle and dependency graph;
- * it must not reach into the desktop app's source tree. Keep this file in sync
- * by reading `src/domain/signaling/SignalMessage.ts` and
- * `src/domain/session/SessionRole.ts` whenever the contract changes.
+ * WHY duplicate this instead of importing from the domain? These files are the
+ * embedded copy of the standalone signaling server (../perch-signaling-server),
+ * kept byte-for-byte in sync so hosted and LAN pairing behave identically. The
+ * standalone deployable has its own lifecycle and can't reach into this source
+ * tree, so its contract stays self-contained. Keep in sync by reading
+ * `src/domain/signaling/SignalMessage.ts` and `src/domain/session/SessionRole.ts`
+ * whenever the contract changes.
  */
 
 /** Which side of a session a peer is on (see app's SessionRole). */

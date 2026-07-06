@@ -25,6 +25,6 @@
       "@shared/*": ["src/shared/*"]
     }
   },
-  "include": ["src", "tests", "signaling-server", "electron.vite.config.ts", "vitest.config.ts"],
+  "include": ["src", "tests", "electron.vite.config.ts", "vitest.config.ts"],
   "exclude": ["node_modules", "out", "dist"]
 }
