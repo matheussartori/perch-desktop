@@ -1,0 +1,59 @@
+/*
+ * The hosting screen. The perch code is the centerpiece — large, glowing, alone
+ * in the middle of the room — with status and reassuring copy stacked beneath
+ * it, and a quiet exit. Everything defers to the code.
+ */
+.root {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  padding: 32px 24px;
+  overflow-y: auto;
+}
+
+.instruction {
+  font-size: 14px;
+  color: var(--text-dim);
+  text-align: center;
+  max-width: 40ch;
+}
+
+.status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.headline {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: center;
+}
+
+.reassurance {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.stop {
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-control);
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.stop:hover {
+  color: var(--text);
+  border-color: var(--danger);
+}

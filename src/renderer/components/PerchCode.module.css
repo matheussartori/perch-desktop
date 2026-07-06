@@ -1,0 +1,95 @@
+/*
+ * The signature. A perch code rendered as discrete monospace tiles — each
+ * character in its own hairline-bordered cell, grouped 3-3-3 with a wider gap
+ * between groups, reading like an identity tag. A single soft amber glow sits
+ * behind the whole run; everything else in the app stays quiet so this element
+ * carries the boldness alone.
+ */
+.root {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+/* The amber light behind the code. */
+.glow {
+  position: absolute;
+  inset: -30% -12%;
+  z-index: 0;
+  background: radial-gradient(60% 70% at 50% 50%, var(--amber-glow) 0%, transparent 70%);
+  filter: blur(6px);
+  pointer-events: none;
+}
+
+.groups {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.group {
+  display: flex;
+  gap: 8px;
+}
+
+.cell {
+  width: 42px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-mono);
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  background: var(--surface-raised);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-control);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.copy {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.root:hover .copy,
+.copy:focus-visible {
+  opacity: 1;
+}
+
+.copy:hover {
+  color: var(--text);
+  border-color: var(--hairline);
+}
+
+.copied {
+  opacity: 1;
+  color: var(--live);
+}
+
+@media (max-width: 620px) {
+  .cell {
+    width: 34px;
+    height: 46px;
+    font-size: 24px;
+  }
+  .groups {
+    gap: 12px;
+  }
+}

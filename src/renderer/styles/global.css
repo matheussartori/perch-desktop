@@ -1,0 +1,91 @@
+/*
+ * Global baseline: a lean reset, full-height app shell, the token-driven type
+ * and color defaults, the faint top "horizon" glow that gives the graphite
+ * background depth, an amber keyboard focus ring, and quiet thin scrollbars.
+ * Motion is opt-out via prefers-reduced-motion.
+ */
+@import './tokens.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+  background-color: var(--bg);
+  /* The horizon: a barely-there amber wash bleeding down from the top edge,
+     over a cool graphite vignette. Fixed so it never scrolls. */
+  background-image:
+    radial-gradient(120% 80% at 50% -20%, var(--amber-glow) 0%, transparent 55%),
+    radial-gradient(140% 100% at 50% 0%, rgba(255, 255, 255, 0.03) 0%, transparent 45%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+input {
+  font: inherit;
+  color: inherit;
+}
+
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Thin, unobtrusive scrollbars that match the graphite surfaces. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--hairline-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--hairline-strong);
+  border-radius: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

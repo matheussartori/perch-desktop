@@ -1,0 +1,11 @@
+/*
+ * App shell: a full-height vertical stack with the fixed title bar on top and
+ * the active view filling the rest. The min-height:0 on the shell lets inner
+ * views own their own scrolling instead of the body.
+ */
+.shell {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}

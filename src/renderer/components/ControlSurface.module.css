@@ -1,0 +1,129 @@
+/*
+ * The control surface. A 16:9 remote screen framed by a hairline, with an
+ * auto-hiding toolbar riding the top edge. While media is negotiating we show a
+ * calm placeholder rather than a black void. The video captures pointer,
+ * wheel, and (when focused) keyboard input and forwards it to the host.
+ */
+.root {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.frame {
+  position: relative;
+  width: 100%;
+  max-width: calc((100vh - 140px) * (16 / 9));
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  outline: none;
+}
+
+.frame:focus-visible {
+  border-color: var(--amber);
+  box-shadow: 0 0 0 2px var(--amber-glow);
+}
+
+.video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: fill;
+  cursor: crosshair;
+}
+
+.placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: var(--text-dim);
+  background: var(--surface);
+}
+
+.placeholderText {
+  font-size: 14px;
+}
+
+/* A slim, ambient loading pulse ring while the link comes up. */
+.ring {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--hairline-strong);
+  border-top-color: var(--amber);
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.toolbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  background: linear-gradient(to bottom, rgba(11, 12, 15, 0.9), rgba(11, 12, 15, 0));
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 160ms ease, transform 160ms ease;
+  pointer-events: none;
+}
+
+.toolbarVisible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.peerCode {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+.toolbarSpacer {
+  flex: 1;
+}
+
+.disconnect {
+  -webkit-app-region: no-drag;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface-raised);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-control);
+  transition: border-color 120ms ease;
+}
+
+.disconnect:hover {
+  border-color: var(--danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ring {
+    animation: none;
+  }
+  .toolbar {
+    transition: none;
+  }
+}

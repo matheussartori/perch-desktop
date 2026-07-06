@@ -1,0 +1,68 @@
+/*
+ * Frameless custom title bar. The bar itself is the drag region; interactive
+ * controls opt back out with no-drag. On macOS we reserve room on the left for
+ * the native traffic lights and render no window buttons; on other platforms we
+ * render minimal minimize/maximize/close controls on the right. The wordmark is
+ * deliberately quiet — the perch code is the app's loud element, not the chrome.
+ */
+.bar {
+  -webkit-app-region: drag;
+  height: 44px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--hairline);
+  user-select: none;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mark {
+  display: block;
+}
+
+.wordmark {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.windowButtons {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.winBtn {
+  width: 34px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.winBtn:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.close:hover {
+  background: var(--danger);
+  color: #fff;
+}

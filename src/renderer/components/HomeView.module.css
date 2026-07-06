@@ -1,0 +1,144 @@
+/*
+ * The landing. A calm, centered hero with the mark up top and two clearly
+ * separated paths: share your own screen, or connect to someone else's. Generous
+ * vertical rhythm, everything quiet — this screen sets the tone before the perch
+ * code takes over.
+ */
+.root {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 40px;
+  padding: 32px 24px;
+  overflow-y: auto;
+}
+
+.masthead {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.title {
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.tagline {
+  font-size: 15px;
+  color: var(--text-dim);
+  max-width: 34ch;
+}
+
+.paths {
+  display: flex;
+  align-items: stretch;
+  gap: 20px;
+  width: 100%;
+  max-width: 720px;
+}
+
+.card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+}
+
+.cardLabel {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.cardHint {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.grow {
+  flex: 1;
+}
+
+.primary {
+  padding: 11px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--bg);
+  background: var(--amber);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-control);
+  transition: filter 120ms ease;
+}
+
+.primary:hover {
+  filter: brightness(1.08);
+}
+
+.field {
+  display: flex;
+  gap: 8px;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text);
+  background: var(--surface-raised);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-control);
+}
+
+.input::placeholder {
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--text-muted);
+}
+
+.input:focus {
+  border-color: var(--amber-dim);
+}
+
+.secondary {
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface-raised);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-control);
+  transition: border-color 120ms ease;
+}
+
+.secondary:hover {
+  border-color: var(--amber-dim);
+}
+
+.error {
+  font-size: 13px;
+  color: var(--danger);
+}
+
+@media (max-width: 640px) {
+  .paths {
+    flex-direction: column;
+  }
+}

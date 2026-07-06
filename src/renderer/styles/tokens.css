@@ -1,0 +1,31 @@
+/*
+ * Perch design tokens — the single source of truth for color, radius, and type.
+ * Every other stylesheet reads from these variables; no hard-coded colors live
+ * outside this file. The palette is a near-black graphite base with one warm
+ * amber accent (the "perch light") and a teal reserved solely for "live".
+ */
+:root {
+  --bg: #0b0c0f;
+  --surface: #131519;
+  --surface-raised: #1a1d23;
+
+  --hairline: rgba(255, 255, 255, 0.08);
+  --hairline-strong: rgba(255, 255, 255, 0.14);
+
+  --text: #ecedef;
+  --text-dim: #8a8f98;
+  --text-muted: #565b64;
+
+  --amber: #e8b04b;
+  --amber-dim: #9c7327;
+  --amber-glow: rgba(232, 176, 75, 0.18);
+
+  --live: #3dd9a0;
+  --danger: #e5533d;
+
+  --radius-card: 14px;
+  --radius-control: 9px;
+
+  --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+}
