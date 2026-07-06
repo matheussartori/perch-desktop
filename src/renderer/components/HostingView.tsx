@@ -4,6 +4,7 @@
  * waiting, then connected. The copy shifts with status so the host always knows
  * whether anyone is actually driving, and can stop at any moment.
  */
+import { useEffect, useState } from 'react'
 import type { SessionStatus } from '@domain/session/SessionStatus'
 import { PerchCode } from './PerchCode'
 import { StatusDot } from './StatusDot'
@@ -29,9 +30,30 @@ function headlineFor(status: SessionStatus): string {
 }
 
 export function HostingView({ myCode, status, disconnect }: HostingViewProps): React.JSX.Element {
+  // This machine's LAN address, so the controller knows where to dial. null
+  // until resolved, or when no network address is available.
+  const [lanAddress, setLanAddress] = useState<string | null>(null)
+  useEffect(() => {
+    let alive = true
+    void window.perch?.getLanAddress().then((addr) => {
+      if (alive) setLanAddress(addr)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
   return (
     <main className={styles.root}>
-      <p className={styles.instruction}>Share this perch code with the person connecting.</p>
+      <p className={styles.instruction}>
+        On the other machine, enter this address and the perch code below.
+      </p>
+
+      {lanAddress !== null && (
+        <p className={styles.address}>
+          Address <strong>{lanAddress}</strong>
+        </p>
+      )}
 
       <PerchCode code={myCode} />
 

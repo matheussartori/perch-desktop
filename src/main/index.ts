@@ -9,6 +9,7 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'node:path'
 import { registerIpc } from './ipc/registerIpc'
+import { startRendezvous } from './rendezvous'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -49,6 +50,9 @@ function createWindow(): void {
 
 void app.whenReady().then(() => {
   registerIpc(() => mainWindow)
+  // Start the in-process rendezvous so this machine can host without any
+  // external signaling server. Harmless (and idle) when we only ever control.
+  void startRendezvous()
   createWindow()
 
   // macOS convention: re-create a window when the dock icon is clicked and none

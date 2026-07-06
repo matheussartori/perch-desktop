@@ -14,6 +14,7 @@ const bridge: PerchBridge = {
     ipcRenderer.send(IpcChannels.applyInput, event)
   },
   listScreens: (): Promise<DesktopSource[]> => ipcRenderer.invoke(IpcChannels.listScreens),
+  getLanAddress: (): Promise<string | null> => ipcRenderer.invoke(IpcChannels.getLanAddress),
   minimize: (): void => {
     ipcRenderer.send(IpcChannels.minimize)
   },

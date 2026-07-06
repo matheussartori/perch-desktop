@@ -25,11 +25,12 @@ function formatCode(raw: string): string {
 
 export function HomeView({ host, connect, error }: HomeViewProps): React.JSX.Element {
   const [value, setValue] = useState('')
+  const [address, setAddress] = useState('')
   const isMac = window.perch?.platform === 'darwin'
-  const canConnect = value.replace(/-/g, '').length === MAX_CHARS
+  const canConnect = value.replace(/-/g, '').length === MAX_CHARS && address.trim().length > 0
 
   const submit = (): void => {
-    if (canConnect) void connect(value)
+    if (canConnect) void connect(value, address)
   }
 
   return (
@@ -56,8 +57,24 @@ export function HomeView({ host, connect, error }: HomeViewProps): React.JSX.Ele
 
         <section className={styles.card}>
           <span className={styles.cardLabel}>Connect</span>
-          <p className={styles.cardHint}>Enter the perch code someone shared with you.</p>
+          <p className={styles.cardHint}>
+            Enter the host&apos;s address and the perch code they shared with you.
+          </p>
           <div className={styles.grow} />
+          <div className={styles.field}>
+            <input
+              className={styles.address}
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submit()
+              }}
+              placeholder="Host address (e.g. 192.168.1.20)"
+              spellCheck={false}
+              autoComplete="off"
+              aria-label="Host address"
+            />
+          </div>
           <div className={styles.field}>
             <input
               className={styles.input}

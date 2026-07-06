@@ -1,3 +1,4 @@
+import { createServer, type Server } from 'node:http'
 import { WebSocketServer } from 'ws'
 import type { RawData, WebSocket } from 'ws'
 import { RoomRegistry } from './RoomRegistry'
@@ -19,17 +20,33 @@ interface Connection {
 export class SignalingServer {
   private readonly registry = new RoomRegistry()
   private wss: WebSocketServer | null = null
+  private http: Server | null = null
 
   constructor(private readonly port: number) {}
 
   /** Start listening. Resolves once the socket is bound to the port. */
   start(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const wss = new WebSocketServer({ port: this.port })
+      // WHY an http.Server under the WS server: a bare WebSocketServer rejects
+      // plain HTTP, so hosting platforms (Fly/Render/Railway) see their health
+      // probe fail and never route traffic. Answering GET /healthz on the same
+      // port fixes that; WebSocket upgrades ride on top of the same listener.
+      const http = createServer((req, res) => {
+        if (req.method === 'GET' && (req.url === '/healthz' || req.url === '/')) {
+          res.writeHead(200, { 'content-type': 'text/plain' })
+          res.end('ok')
+          return
+        }
+        res.writeHead(404)
+        res.end()
+      })
+      const wss = new WebSocketServer({ server: http })
+      this.http = http
       this.wss = wss
       wss.on('connection', (ws) => this.handleConnection(ws))
-      wss.on('error', reject)
-      wss.on('listening', () => resolve())
+      http.on('error', reject)
+      // Bind all interfaces so containers/VPS accept external traffic, not just loopback.
+      http.listen(this.port, () => resolve())
     })
   }
 
@@ -38,7 +55,10 @@ export class SignalingServer {
     return new Promise((resolve) => {
       if (!this.wss) return resolve()
       for (const client of this.wss.clients) client.close()
-      this.wss.close(() => resolve())
+      this.wss.close(() => {
+        if (this.http) return this.http.close(() => resolve())
+        resolve()
+      })
     })
   }
 

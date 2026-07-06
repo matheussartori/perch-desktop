@@ -107,6 +107,13 @@
   border-radius: var(--radius-control);
 }
 
+/* The host address (an IP) reads as plain text — no code-style caps or tracking. */
+.address {
+  composes: input;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
 .input::placeholder {
   letter-spacing: normal;
   text-transform: none;

@@ -10,6 +10,27 @@
 import type { DataChannel, MediaTransport, TransportState } from '@domain/media/MediaTransport'
 import type { Unsubscribe } from '@domain/signaling/SignalingChannel'
 
+/**
+ * ICE servers are baked in at build time so a release can point at a TURN relay
+ * — required for peers on different NATs/firewalls — without a code change.
+ * `VITE_ICE_SERVERS` is a JSON array of RTCIceServer. Absent or malformed falls
+ * back to Google STUN only, which suffices on a shared LAN but NOT across the
+ * public internet, where a symmetric NAT will drop the peer-to-peer connection.
+ */
+const DEFAULT_ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
+
+function resolveIceServers(): RTCIceServer[] {
+  const raw = import.meta.env['VITE_ICE_SERVERS']
+  if (!raw) return DEFAULT_ICE_SERVERS
+  try {
+    const parsed = JSON.parse(raw) as RTCIceServer[]
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_ICE_SERVERS
+  } catch {
+    console.warn('[perch] VITE_ICE_SERVERS is not valid JSON; using STUN only.')
+    return DEFAULT_ICE_SERVERS
+  }
+}
+
 export class WebRtcMediaTransport implements MediaTransport {
   private readonly pc: RTCPeerConnection
 
@@ -21,10 +42,8 @@ export class WebRtcMediaTransport implements MediaTransport {
   /** Dedupe: `ontrack` fires per track, but a stream should surface once. */
   private readonly seenStreams = new Set<MediaStream>()
 
-  constructor() {
-    this.pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-    })
+  constructor(iceServers: RTCIceServer[] = resolveIceServers()) {
+    this.pc = new RTCPeerConnection({ iceServers })
 
     this.pc.ontrack = (event: RTCTrackEvent) => {
       const stream = event.streams[0]

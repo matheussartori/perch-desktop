@@ -1,0 +1,15 @@
+{
+  "name": "perch-signaling-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Perch WebRTC rendezvous server — relays signaling only, never media.",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "tsx": "^4.19.2",
+    "ws": "^8.18.0"
+  }
+}

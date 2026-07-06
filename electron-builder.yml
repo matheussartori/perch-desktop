@@ -35,7 +35,7 @@ win:
       arch: [x64]
 portable:
   artifactName: Perch-${version}-portable.exe
-  requestExecutionLevel: asInvoker
+  requestExecutionLevel: user
 
 # --- Linux: AppImage is portable by nature ---
 linux:

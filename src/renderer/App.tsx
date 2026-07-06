@@ -18,9 +18,9 @@ export function App(): React.JSX.Element {
 
   // Wrap connect so we can display the dialed code on the control surface.
   const connect = useCallback(
-    async (rawCode: string): Promise<void> => {
+    async (rawCode: string, hostAddress: string): Promise<void> => {
       setDialedCode(rawCode)
-      await session.connect(rawCode)
+      await session.connect(rawCode, hostAddress)
     },
     [session]
   )

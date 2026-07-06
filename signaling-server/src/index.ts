@@ -14,15 +14,18 @@ const server = new SignalingServer(port)
 server
   .start()
   .then(() => {
-    console.log(`[signal] Perch signaling server listening on ws://localhost:${port}`)
+    console.log(`[signal] Perch signaling server listening on port ${port} (health: GET /healthz)`)
   })
   .catch((err: unknown) => {
     console.error('[signal] failed to start:', err)
     process.exit(1)
   })
 
-// Close sockets and release the port on Ctrl-C so restarts don't hit EADDRINUSE.
-process.on('SIGINT', () => {
+// Close sockets and release the port on shutdown so restarts don't hit
+// EADDRINUSE. SIGINT = Ctrl-C locally; SIGTERM = how containers/PaaS stop us.
+const shutdown = () => {
   console.log('\n[signal] shutting down…')
   server.stop().then(() => process.exit(0))
-})
+}
+process.on('SIGINT', shutdown)
+process.on('SIGTERM', shutdown)

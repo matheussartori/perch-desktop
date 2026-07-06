@@ -22,6 +22,20 @@
   max-width: 40ch;
 }
 
+/* The host's LAN address, sitting just above the code the controller also needs. */
+.address {
+  margin-top: -18px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.address strong {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+
 .status {
   display: flex;
   flex-direction: column;

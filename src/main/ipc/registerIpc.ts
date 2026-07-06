@@ -8,9 +8,20 @@
  *  - window chrome controls act on the current BrowserWindow.
  */
 import { ipcMain, desktopCapturer, type BrowserWindow, type IpcMainEvent } from 'electron'
+import { networkInterfaces } from 'node:os'
 import { IpcChannels, type DesktopSource } from '@shared/bridge'
 import { InputEventCodec } from '@domain/input/InputEvent'
 import { NutJsInputController } from '@infrastructure/input/NutJsInputController'
+
+/** First non-internal IPv4 address, so a controller on the LAN knows what to dial. */
+function findLanAddress(): string | null {
+  for (const addrs of Object.values(networkInterfaces())) {
+    for (const addr of addrs ?? []) {
+      if (addr.family === 'IPv4' && !addr.internal) return addr.address
+    }
+  }
+  return null
+}
 
 export function registerIpc(getWindow: () => BrowserWindow | null): void {
   // One shared controller: it owns nut-js config and the unknown-key warn cache.
@@ -32,6 +43,8 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     const sources = await desktopCapturer.getSources({ types: ['screen'] })
     return sources.map((source) => ({ id: source.id, name: source.name }))
   })
+
+  ipcMain.handle(IpcChannels.getLanAddress, (): string | null => findLanAddress())
 
   ipcMain.on(IpcChannels.minimize, () => {
     getWindow()?.minimize()
