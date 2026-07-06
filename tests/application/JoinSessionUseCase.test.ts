@@ -19,20 +19,47 @@ const setup = () => {
   return { signaling, transport, remoteStreams, useCase }
 }
 
+/**
+ * `execute` resolves only once the host is confirmed present (a `peer-joined`
+ * arrives), so a wrong/idle code fails loudly instead of black-screening. Since
+ * the message handler is wired synchronously before `execute` first awaits, the
+ * tests emit `peer-joined` right after the call, then await the returned handle.
+ */
+const connectHost = async (
+  signaling: FakeSignaling,
+  useCase: JoinSessionUseCase
+): ReturnType<JoinSessionUseCase['execute']> => {
+  const pending = useCase.execute(code())
+  signaling.emit({ kind: 'peer-joined', role: 'host' })
+  return pending
+}
+
 describe('JoinSessionUseCase', () => {
   it('joins signaling as controller and opens the input data channel', async () => {
     const { signaling, transport, useCase } = setup()
-    await useCase.execute(code())
+    await connectHost(signaling, useCase)
     expect(signaling.joined).toEqual({ code: 'ABCDEFGHJ', role: 'controller' })
     expect(transport.createdChannels).toHaveLength(1)
   })
 
+  it('rejects and tears down if no host joins before the timeout', async () => {
+    const signaling = new FakeSignaling()
+    const transport = new FakeTransport()
+    const useCase = new JoinSessionUseCase({
+      signaling,
+      transport,
+      onRemoteStream: () => {},
+      peerJoinTimeoutMs: 20
+    })
+    await expect(useCase.execute(code())).rejects.toThrow(/No one answered/)
+    expect(transport.closed).toBe(true)
+    expect(signaling.closed).toBe(true)
+  })
+
   it('creates exactly one offer once the host is present', async () => {
     const { signaling, useCase } = setup()
-    await useCase.execute(code())
+    await connectHost(signaling, useCase)
 
-    signaling.emit({ kind: 'peer-joined', role: 'host' })
-    await Promise.resolve()
     signaling.emit({ kind: 'peer-joined', role: 'host' }) // duplicate must not re-offer
     await Promise.resolve()
 
@@ -41,22 +68,21 @@ describe('JoinSessionUseCase', () => {
   })
 
   it('hands the host stream to the renderer', async () => {
-    const { transport, remoteStreams, useCase } = setup()
-    await useCase.execute(code())
+    const { signaling, transport, remoteStreams, useCase } = setup()
+    await connectHost(signaling, useCase)
     transport.emitRemoteStream(fakeStream())
     expect(remoteStreams).toHaveLength(1)
   })
 
   it('only sends input once the session is live', async () => {
     const { signaling, transport, useCase } = setup()
-    const handle = await useCase.execute(code())
+    const handle = await connectHost(signaling, useCase)
     const channel = transport.createdChannels[0]!
     const event: InputEvent = { type: 'pointer-move', x: 0.3, y: 0.4 }
 
     handle.sendInput(event) // not live yet — dropped
     expect(channel.sent).toHaveLength(0)
 
-    signaling.emit({ kind: 'peer-joined', role: 'host' })
     transport.emitState('connected')
     handle.sendInput(event)
 
@@ -65,7 +91,7 @@ describe('JoinSessionUseCase', () => {
 
   it('ends when the host leaves', async () => {
     const { signaling, useCase } = setup()
-    const handle = await useCase.execute(code())
+    const handle = await connectHost(signaling, useCase)
     signaling.emit({ kind: 'peer-left' })
     expect(handle.session.status).toBe('ended')
   })

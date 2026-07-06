@@ -29,7 +29,14 @@ export function App(): React.JSX.Element {
     <div className={styles.shell}>
       <TitleBar />
       {session.mode === 'home' && (
-        <HomeView host={session.host} connect={connect} error={session.error} />
+        <HomeView
+          host={session.host}
+          connect={connect}
+          error={session.error}
+          busy={session.busy}
+          notice={session.notice}
+          needsAddress={session.needsAddress}
+        />
       )}
       {session.mode === 'hosting' && session.myCode !== null && (
         <HostingView

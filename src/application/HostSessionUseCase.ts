@@ -61,30 +61,38 @@ export class HostSessionUseCase {
 
     cleanups.push(
       signaling.onMessage(async (message) => {
-        switch (message.kind) {
-          case 'peer-joined': {
-            // A controller arrived: attach our screen+audio so the tracks are
-            // present in the answer we are about to produce.
-            const stream = await media.capture()
-            transport.addLocalStream(stream)
-            break
+        // A throw here (capture denied, SDP failure) would be an unhandled
+        // rejection; surface it as a failed session instead.
+        try {
+          switch (message.kind) {
+            case 'peer-joined': {
+              // A controller arrived: attach our screen+audio so the tracks are
+              // present in the answer we are about to produce.
+              const stream = await media.capture()
+              transport.addLocalStream(stream)
+              break
+            }
+            case 'offer': {
+              const answer = await transport.createAnswer(message.sdp)
+              signaling.send({ kind: 'answer', sdp: answer })
+              break
+            }
+            case 'ice':
+              await transport.addIceCandidate(message.candidate)
+              break
+            case 'peer-left':
+              session.end('remote')
+              emit()
+              break
+            case 'error':
+              session.fail()
+              emit()
+              break
           }
-          case 'offer': {
-            const answer = await transport.createAnswer(message.sdp)
-            signaling.send({ kind: 'answer', sdp: answer })
-            break
-          }
-          case 'ice':
-            await transport.addIceCandidate(message.candidate)
-            break
-          case 'peer-left':
-            session.end('remote')
-            emit()
-            break
-          case 'error':
-            session.fail()
-            emit()
-            break
+        } catch (cause) {
+          console.error('[perch] host negotiation failed:', cause)
+          session.fail()
+          emit()
         }
       })
     )

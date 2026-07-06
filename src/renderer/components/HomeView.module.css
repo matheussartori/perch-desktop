@@ -144,6 +144,12 @@
   color: var(--danger);
 }
 
+/* Transient connection progress ("Connecting…", "Waking the server…"). */
+.notice {
+  font-size: 13px;
+  color: var(--live);
+}
+
 @media (max-width: 640px) {
   .paths {
     flex-direction: column;

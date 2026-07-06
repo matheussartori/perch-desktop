@@ -12,6 +12,9 @@ interface HomeViewProps {
   host: PerchController['host']
   connect: PerchController['connect']
   error: string | null
+  busy: boolean
+  notice: string | null
+  needsAddress: boolean
 }
 
 const MAX_CHARS = 9
@@ -23,11 +26,20 @@ function formatCode(raw: string): string {
   return groups.join('-')
 }
 
-export function HomeView({ host, connect, error }: HomeViewProps): React.JSX.Element {
+export function HomeView({
+  host,
+  connect,
+  error,
+  busy,
+  notice,
+  needsAddress
+}: HomeViewProps): React.JSX.Element {
   const [value, setValue] = useState('')
   const [address, setAddress] = useState('')
   const isMac = window.perch?.platform === 'darwin'
-  const canConnect = value.replace(/-/g, '').length === MAX_CHARS && address.trim().length > 0
+  const codeReady = value.replace(/-/g, '').length === MAX_CHARS
+  const addressReady = !needsAddress || address.trim().length > 0
+  const canConnect = codeReady && addressReady && !busy
 
   const submit = (): void => {
     if (canConnect) void connect(value, address)
@@ -50,7 +62,12 @@ export function HomeView({ host, connect, error }: HomeViewProps): React.JSX.Ele
             {isMac ? 'Mac' : 'screen'}.
           </p>
           <div className={styles.grow} />
-          <button type="button" className={styles.primary} onClick={() => void host()}>
+          <button
+            type="button"
+            className={styles.primary}
+            onClick={() => void host()}
+            disabled={busy}
+          >
             {isMac ? 'Share this Mac' : 'Share this screen'}
           </button>
         </section>
@@ -58,23 +75,28 @@ export function HomeView({ host, connect, error }: HomeViewProps): React.JSX.Ele
         <section className={styles.card}>
           <span className={styles.cardLabel}>Connect</span>
           <p className={styles.cardHint}>
-            Enter the host&apos;s address and the perch code they shared with you.
+            {needsAddress
+              ? "Enter the host's address and the perch code they shared with you."
+              : 'Enter the perch code they shared with you.'}
           </p>
           <div className={styles.grow} />
-          <div className={styles.field}>
-            <input
-              className={styles.address}
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') submit()
-              }}
-              placeholder="Host address (e.g. 192.168.1.20)"
-              spellCheck={false}
-              autoComplete="off"
-              aria-label="Host address"
-            />
-          </div>
+          {needsAddress && (
+            <div className={styles.field}>
+              <input
+                className={styles.address}
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') submit()
+                }}
+                placeholder="Host address (e.g. 192.168.1.20)"
+                spellCheck={false}
+                autoComplete="off"
+                aria-label="Host address"
+                disabled={busy}
+              />
+            </div>
+          )}
           <div className={styles.field}>
             <input
               className={styles.input}
@@ -88,6 +110,7 @@ export function HomeView({ host, connect, error }: HomeViewProps): React.JSX.Ele
               autoComplete="off"
               aria-label="Perch code"
               aria-invalid={error !== null}
+              disabled={busy}
             />
             <button
               type="button"
@@ -95,10 +118,11 @@ export function HomeView({ host, connect, error }: HomeViewProps): React.JSX.Ele
               onClick={submit}
               disabled={!canConnect}
             >
-              Connect
+              {busy ? 'Connecting…' : 'Connect'}
             </button>
           </div>
-          {error !== null && <p className={styles.error}>{error}</p>}
+          {busy && notice !== null && <p className={styles.notice}>{notice}</p>}
+          {!busy && error !== null && <p className={styles.error}>{error}</p>}
         </section>
       </div>
     </main>

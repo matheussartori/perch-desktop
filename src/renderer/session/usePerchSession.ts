@@ -26,6 +26,28 @@ import { ScreenMediaSource } from '@infrastructure/capture/ScreenMediaSource'
  */
 const SIGNAL_OVERRIDE = import.meta.env['VITE_SIGNAL_URL'] as string | undefined
 
+/**
+ * Signaling dial settings. Hosted mode may hit a scale-to-zero server that
+ * SLEEPS when idle, so it retries with backoff (long enough to cover a cold
+ * start) and reports "waking…". LAN mode dials a live rendezvous, so a couple
+ * of quick tries is enough — no point stalling on a genuinely wrong address.
+ */
+function connectOptions(onNotice: (text: string) => void): {
+  connectTimeoutMs: number
+  retries: number
+  backoffMs: number
+  onConnecting: (attempt: number, max: number) => void
+} {
+  const hosted = Boolean(SIGNAL_OVERRIDE)
+  return {
+    connectTimeoutMs: hosted ? 9000 : 6000,
+    retries: hosted ? 5 : 1,
+    backoffMs: 1200,
+    onConnecting: (attempt, max) =>
+      onNotice(hosted && attempt > 1 ? `Waking the server… (${attempt}/${max})` : 'Connecting…')
+  }
+}
+
 export type PerchMode = 'home' | 'hosting' | 'controlling'
 
 export type PerchController = {
@@ -36,6 +58,15 @@ export type PerchController = {
   /** The host's screen + audio, once we are controlling and media arrives. */
   remoteStream: MediaStream | null
   error: string | null
+  /** True while a host/connect attempt is in flight, for disabling the UI. */
+  busy: boolean
+  /** Transient progress text ("Connecting…", "Waking the server…"). */
+  notice: string | null
+  /**
+   * Whether the Connect form needs a host address. False when a hosted signal
+   * URL is baked in — pairing is then by code alone, no IP required.
+   */
+  needsAddress: boolean
   host: () => Promise<void>
   /** `hostAddress` is the host's LAN IP; ignored when a hosted signal URL is baked in. */
   connect: (rawCode: string, hostAddress: string) => Promise<void>
@@ -55,6 +86,8 @@ export function usePerchSession(): PerchController {
   const [myCode, setMyCode] = useState<string | null>(null)
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
 
   // The live session. Host mode keeps a SessionHandle; controller mode keeps a
   // ControllerHandle (which also carries sendInput). Held in a ref so input
@@ -64,12 +97,14 @@ export function usePerchSession(): PerchController {
 
   const host = useCallback(async () => {
     setError(null)
+    setBusy(true)
     const code = SessionCode.generate(cryptoRandom)
     try {
       const useCase = new HostSessionUseCase({
         // Loopback to our own embedded rendezvous (LAN), unless a hosted URL is baked in.
         signaling: new WebSocketSignalingChannel(
-          SIGNAL_OVERRIDE ?? `ws://127.0.0.1:${RENDEZVOUS_PORT}`
+          SIGNAL_OVERRIDE ?? `ws://127.0.0.1:${RENDEZVOUS_PORT}`,
+          connectOptions(setNotice)
         ),
         transport: new WebRtcMediaTransport(),
         media: new ScreenMediaSource(),
@@ -86,6 +121,9 @@ export function usePerchSession(): PerchController {
           ? `Couldn't start sharing: ${cause.message}`
           : "Couldn't start sharing this screen."
       )
+    } finally {
+      setBusy(false)
+      setNotice(null)
     }
   }, [])
 
@@ -101,11 +139,13 @@ export function usePerchSession(): PerchController {
       setError("Enter the host's address (shown on the sharing machine).")
       return
     }
+    setBusy(true)
     try {
       const useCase = new JoinSessionUseCase({
         // Dial the host's LAN rendezvous, unless a hosted URL is baked in.
         signaling: new WebSocketSignalingChannel(
-          SIGNAL_OVERRIDE ?? `ws://${address}:${RENDEZVOUS_PORT}`
+          SIGNAL_OVERRIDE ?? `ws://${address}:${RENDEZVOUS_PORT}`,
+          connectOptions(setNotice)
         ),
         transport: new WebRtcMediaTransport(),
         onRemoteStream: setRemoteStream,
@@ -120,6 +160,9 @@ export function usePerchSession(): PerchController {
           ? `Couldn't reach that perch code: ${cause.message}`
           : "Couldn't reach that perch code. Check it and try again."
       )
+    } finally {
+      setBusy(false)
+      setNotice(null)
     }
   }, [])
 
@@ -133,6 +176,8 @@ export function usePerchSession(): PerchController {
     setMyCode(null)
     setRemoteStream(null)
     setError(null)
+    setBusy(false)
+    setNotice(null)
   }, [])
 
   const send = useCallback((event: InputEvent) => {
@@ -167,6 +212,9 @@ export function usePerchSession(): PerchController {
     myCode,
     remoteStream,
     error,
+    busy,
+    notice,
+    needsAddress: !SIGNAL_OVERRIDE,
     host,
     connect,
     disconnect,

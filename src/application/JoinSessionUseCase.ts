@@ -12,7 +12,15 @@ export interface JoinSessionDeps {
   /** Called with the host's screen + audio stream to render. */
   onRemoteStream: (stream: MediaStream) => void
   onStatus?: StatusListener
+  /**
+   * How long to wait, after the signaling socket is up, for the host to appear
+   * in the room before giving up. Guards the common "wrong/expired code" and
+   * "host isn't sharing yet" cases, which would otherwise hang silently.
+   */
+  peerJoinTimeoutMs?: number
 }
+
+const DEFAULT_PEER_JOIN_TIMEOUT_MS = 20_000
 
 export interface ControllerHandle extends SessionHandle {
   /** Send a validated input event to the host over the data channel. */
@@ -29,6 +37,7 @@ export class JoinSessionUseCase {
 
   async execute(code: SessionCode): Promise<ControllerHandle> {
     const { signaling, transport, onRemoteStream, onStatus } = this.deps
+    const peerJoinTimeoutMs = this.deps.peerJoinTimeoutMs ?? DEFAULT_PEER_JOIN_TIMEOUT_MS
     const session = Session.controller(code)
     const cleanups: Array<() => void> = []
     let inputChannel: DataChannel | null = null
@@ -36,6 +45,26 @@ export class JoinSessionUseCase {
 
     const emit = () => onStatus?.(session.status)
     emit()
+
+    // Resolves once the host is confirmed present in the room; rejects if none
+    // shows up in time (or negotiation throws). We only hand back a live handle
+    // after this settles, so a bad code fails loudly instead of black-screening.
+    let resolvePeer!: () => void
+    let rejectPeer!: (error: Error) => void
+    const peerReady = new Promise<void>((resolve, reject) => {
+      resolvePeer = resolve
+      rejectPeer = reject
+    })
+    const peerTimer = setTimeout(
+      () =>
+        rejectPeer(
+          new Error(
+            "No one answered that code. Check it's right and that the other machine has clicked Share."
+          )
+        ),
+      peerJoinTimeoutMs
+    )
+    cleanups.push(() => clearTimeout(peerTimer))
 
     // Open the channel we will stream input over (offerer side).
     inputChannel = transport.createDataChannel('input')
@@ -61,31 +90,53 @@ export class JoinSessionUseCase {
 
     cleanups.push(
       signaling.onMessage(async (message) => {
-        switch (message.kind) {
-          case 'peer-joined':
-            // The host is present — begin negotiation.
-            await makeOffer()
-            break
-          case 'answer':
-            await transport.acceptAnswer(message.sdp)
-            break
-          case 'ice':
-            await transport.addIceCandidate(message.candidate)
-            break
-          case 'peer-left':
-            session.end('remote')
-            emit()
-            break
-          case 'error':
-            session.fail()
-            emit()
-            break
+        // A throw here would otherwise be an unhandled rejection with no user
+        // feedback; funnel every failure into fail()/reject instead.
+        try {
+          switch (message.kind) {
+            case 'peer-joined':
+              // The host is present — begin negotiation and unblock execute().
+              clearTimeout(peerTimer)
+              await makeOffer()
+              resolvePeer()
+              break
+            case 'answer':
+              await transport.acceptAnswer(message.sdp)
+              break
+            case 'ice':
+              await transport.addIceCandidate(message.candidate)
+              break
+            case 'peer-left':
+              session.end('remote')
+              emit()
+              break
+            case 'error':
+              session.fail()
+              emit()
+              rejectPeer(new Error(message.message))
+              break
+          }
+        } catch (cause) {
+          session.fail()
+          emit()
+          rejectPeer(cause instanceof Error ? cause : new Error('Negotiation failed.'))
         }
       })
     )
 
     await signaling.join(code.toString(), 'controller')
     emit()
+
+    // Don't report success until the host is actually on the other end.
+    try {
+      await peerReady
+    } catch (cause) {
+      for (const c of cleanups) c()
+      inputChannel?.close()
+      transport.close()
+      signaling.close()
+      throw cause
+    }
 
     return {
       session,
