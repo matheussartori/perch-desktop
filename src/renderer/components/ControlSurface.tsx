@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { SessionStatus } from '@domain/session/SessionStatus'
 import type { PointerButton } from '@domain/input/InputEvent'
+import type { VideoReceiveStats } from '@domain/media/MediaTransport'
 import type { PerchController } from '../session/usePerchSession'
 import { StatusDot } from './StatusDot'
 import styles from './ControlSurface.module.css'
@@ -18,6 +19,7 @@ interface ControlSurfaceProps {
   status: SessionStatus
   peerCode: string | null
   disconnect: () => void
+  getVideoStats: PerchController['getVideoStats']
   sendPointerMove: PerchController['sendPointerMove']
   sendPointerButton: PerchController['sendPointerButton']
   sendScroll: PerchController['sendScroll']
@@ -28,11 +30,32 @@ const BUTTON: Record<number, PointerButton> = { 0: 'left', 1: 'middle', 2: 'righ
 
 const TOOLBAR_LINGER_MS = 2200
 
+const STATS_POLL_MS = 1000
+
+/** "H264 · 1080p60 · buffer 8ms" — compact latency readout for the toolbar. */
+function formatStats(stats: VideoReceiveStats | null): string | null {
+  if (!stats) return null
+  const parts: string[] = []
+  if (stats.codec) parts.push(stats.codec)
+  if (stats.frameHeight) {
+    const fps = stats.framesPerSecond === null ? '' : Math.round(stats.framesPerSecond)
+    parts.push(`${stats.frameHeight}p${fps}`)
+  }
+  if (stats.jitterBufferMs !== null) {
+    parts.push(`buffer ${Math.max(0, Math.round(stats.jitterBufferMs))}ms`)
+  }
+  if (stats.decodeMs !== null) {
+    parts.push(`decode ${Math.max(0, Math.round(stats.decodeMs))}ms`)
+  }
+  return parts.length > 0 ? parts.join(' · ') : null
+}
+
 export function ControlSurface({
   remoteStream,
   status,
   peerCode,
   disconnect,
+  getVideoStats,
   sendPointerMove,
   sendPointerButton,
   sendScroll,
@@ -43,6 +66,7 @@ export function ControlSurface({
   const focusedRef = useRef(false)
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [toolbarVisible, setToolbarVisible] = useState(true)
+  const [stats, setStats] = useState<VideoReceiveStats | null>(null)
 
   // Bind the incoming stream to the <video>.
   useEffect(() => {
@@ -54,6 +78,24 @@ export function ControlSurface({
   useEffect(() => {
     if (remoteStream) frameRef.current?.focus()
   }, [remoteStream])
+
+  // Poll receive-side stats once a second while media flows, so latency
+  // regressions are visible in the toolbar without opening devtools.
+  useEffect(() => {
+    if (!remoteStream) return
+    let cancelled = false
+    const tick = async (): Promise<void> => {
+      const next = await getVideoStats()
+      if (!cancelled) setStats(next)
+    }
+    void tick()
+    const timer = setInterval(() => void tick(), STATS_POLL_MS)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+      setStats(null)
+    }
+  }, [remoteStream, getVideoStats])
 
   // Normalize a pointer position against the video's rendered box.
   const normalized = useCallback((clientX: number, clientY: number): [number, number] => {
@@ -139,6 +181,9 @@ export function ControlSurface({
         >
           <StatusDot status={status} />
           {peerCode !== null && <span className={styles.peerCode}>{peerCode}</span>}
+          {formatStats(stats) !== null && (
+            <span className={styles.stats}>{formatStats(stats)}</span>
+          )}
           <span className={styles.toolbarSpacer} />
           <button type="button" className={styles.disconnect} onClick={disconnect}>
             Disconnect

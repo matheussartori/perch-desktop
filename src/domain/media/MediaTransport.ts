@@ -8,6 +8,32 @@ export interface DataChannel {
   close(): void
 }
 
+export interface DataChannelOptions {
+  /**
+   * A lossy channel drops a message instead of retransmitting it after packet
+   * loss. Right for fresh-only traffic (pointer moves): a retransmitted
+   * position is already stale when it lands, and waiting for it head-of-line
+   * blocks every newer position behind it.
+   */
+  lossy?: boolean
+}
+
+/**
+ * Receive-side video health, sampled between consecutive calls. Fields are
+ * null until two samples exist (rates need a delta) or the stat is unknown.
+ */
+export type VideoReceiveStats = {
+  framesPerSecond: number | null
+  /** Average time a frame waited in the jitter buffer before playout (ms). */
+  jitterBufferMs: number | null
+  /** Average decode time per frame (ms). */
+  decodeMs: number | null
+  frameWidth: number | null
+  frameHeight: number | null
+  /** Negotiated video codec, e.g. "H264" or "VP8". */
+  codec: string | null
+}
+
 export type TransportState = 'new' | 'connecting' | 'connected' | 'disconnected' | 'failed' | 'closed'
 
 /**
@@ -23,9 +49,12 @@ export interface MediaTransport {
   onRemoteStream(handler: (stream: MediaStream) => void): Unsubscribe
 
   /** Open a named data channel (offerer side). */
-  createDataChannel(label: string): DataChannel
+  createDataChannel(label: string, options?: DataChannelOptions): DataChannel
   /** Receive a data channel opened by the peer (answerer side). */
   onDataChannel(handler: (channel: DataChannel) => void): Unsubscribe
+
+  /** Sample incoming-video stats (controller side); null before media flows. */
+  getVideoReceiveStats(): Promise<VideoReceiveStats | null>
 
   /** SDP negotiation. */
   createOffer(): Promise<string>

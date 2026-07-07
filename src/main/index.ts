@@ -11,6 +11,12 @@ import { join } from 'node:path'
 import { registerIpc } from './ipc/registerIpc'
 import { startRendezvous } from './rendezvous'
 
+// GPU compositing switches that keep decoded WebRTC frames on the GPU all the
+// way to the screen (zero-copy), trimming render latency on the controller
+// side. Must be set before app ready; harmless no-ops where unsupported.
+app.commandLine.appendSwitch('enable-gpu-rasterization')
+app.commandLine.appendSwitch('enable-zero-copy')
+
 let mainWindow: BrowserWindow | null = null
 
 function createWindow(): void {

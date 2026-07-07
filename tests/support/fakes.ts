@@ -1,7 +1,13 @@
 import type { SignalingChannel, Unsubscribe } from '@domain/signaling/SignalingChannel'
 import type { SignalMessage } from '@domain/signaling/SignalMessage'
 import type { SessionRole } from '@domain/session/SessionRole'
-import type { DataChannel, MediaTransport, TransportState } from '@domain/media/MediaTransport'
+import type {
+  DataChannel,
+  DataChannelOptions,
+  MediaTransport,
+  TransportState,
+  VideoReceiveStats
+} from '@domain/media/MediaTransport'
 import type { InputController } from '@domain/input/InputController'
 import type { InputEvent } from '@domain/input/InputEvent'
 import type { MediaSource } from '@application/ports'
@@ -38,6 +44,11 @@ export class FakeSignaling implements SignalingChannel {
 export class FakeDataChannel implements DataChannel {
   readonly sent: string[] = []
   closed = false
+
+  constructor(
+    readonly label = '',
+    readonly lossy = false
+  ) {}
   private messageHandlers: Array<(d: string) => void> = []
   private openHandlers: Array<() => void> = []
 
@@ -84,14 +95,17 @@ export class FakeTransport implements MediaTransport {
     this.remoteStreamHandlers.push(handler)
     return () => void 0
   }
-  createDataChannel(_label: string): DataChannel {
-    const c = new FakeDataChannel()
+  createDataChannel(label: string, options?: DataChannelOptions): DataChannel {
+    const c = new FakeDataChannel(label, options?.lossy === true)
     this.createdChannels.push(c)
     return c
   }
   onDataChannel(handler: (c: DataChannel) => void): Unsubscribe {
     this.dataChannelHandlers.push(handler)
     return () => void 0
+  }
+  async getVideoReceiveStats(): Promise<VideoReceiveStats | null> {
+    return null
   }
   async createOffer(): Promise<string> {
     return 'fake-offer-sdp'

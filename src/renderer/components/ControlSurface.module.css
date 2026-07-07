@@ -99,6 +99,15 @@
   color: var(--text-dim);
 }
 
+/* Live receive-side readout (codec · resolution/fps · buffer · decode). */
+.stats {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
 .toolbarSpacer {
   flex: 1;
 }

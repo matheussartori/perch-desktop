@@ -51,6 +51,7 @@ export function App(): React.JSX.Element {
           status={session.status}
           peerCode={dialedCode}
           disconnect={session.disconnect}
+          getVideoStats={session.getVideoStats}
           sendPointerMove={session.sendPointerMove}
           sendPointerButton={session.sendPointerButton}
           sendScroll={session.sendScroll}

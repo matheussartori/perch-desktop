@@ -10,6 +10,7 @@ import { useCallback, useRef, useState } from 'react'
 import { SessionCode } from '@domain/session/SessionCode'
 import type { SessionStatus } from '@domain/session/SessionStatus'
 import type { InputEvent, PointerButton, KeyModifiers } from '@domain/input/InputEvent'
+import type { MediaTransport, VideoReceiveStats } from '@domain/media/MediaTransport'
 import { HostSessionUseCase, type SessionHandle } from '@application/HostSessionUseCase'
 import { JoinSessionUseCase, type ControllerHandle } from '@application/JoinSessionUseCase'
 import { cryptoRandom } from '@shared/Random'
@@ -71,6 +72,8 @@ export type PerchController = {
   /** `hostAddress` is the host's LAN IP; ignored when a hosted signal URL is baked in. */
   connect: (rawCode: string, hostAddress: string) => Promise<void>
   disconnect: () => void
+  /** Sample incoming-video stats while controlling (fps, jitter buffer, codec). */
+  getVideoStats: () => Promise<VideoReceiveStats | null>
   sendPointerMove: (nx: number, ny: number) => void
   sendPointerButton: (button: PointerButton, pressed: boolean, nx: number, ny: number) => void
   sendScroll: (dx: number, dy: number) => void
@@ -94,6 +97,19 @@ export function usePerchSession(): PerchController {
   // forwarding never triggers a re-render and survives status changes.
   const hostHandle = useRef<SessionHandle | null>(null)
   const controllerHandle = useRef<ControllerHandle | null>(null)
+
+  // The controller's transport, kept (as its port) so the UI can poll
+  // receive-side video stats without reaching into the use case.
+  const controllerTransport = useRef<MediaTransport | null>(null)
+
+  // Pointer-move coalescing. Raw DOM mousemove fires far faster than the host can
+  // actuate (125–1000 Hz on modern mice/trackpads); sending every one floods the
+  // channel with stale positions that must all be applied in order, so the cursor
+  // lags further and further behind. We instead keep only the latest position and
+  // flush it once per animation frame (~display refresh) — the freshest position
+  // is all that matters, and discrete events (clicks/keys) still go immediately.
+  const pendingMove = useRef<{ x: number; y: number } | null>(null)
+  const moveFrame = useRef<number | null>(null)
 
   const host = useCallback(async () => {
     setError(null)
@@ -141,18 +157,20 @@ export function usePerchSession(): PerchController {
     }
     setBusy(true)
     try {
+      const transport = new WebRtcMediaTransport()
       const useCase = new JoinSessionUseCase({
         // Dial the host's LAN rendezvous, unless a hosted URL is baked in.
         signaling: new WebSocketSignalingChannel(
           SIGNAL_OVERRIDE ?? `ws://${address}:${RENDEZVOUS_PORT}`,
           connectOptions(setNotice)
         ),
-        transport: new WebRtcMediaTransport(),
+        transport,
         onRemoteStream: setRemoteStream,
         onStatus: setStatus
       })
       const handle = await useCase.execute(parsed.value)
       controllerHandle.current = handle
+      controllerTransport.current = transport
       setMode('controlling')
     } catch (cause) {
       setError(
@@ -167,10 +185,16 @@ export function usePerchSession(): PerchController {
   }, [])
 
   const disconnect = useCallback(() => {
+    if (moveFrame.current !== null) {
+      cancelAnimationFrame(moveFrame.current)
+      moveFrame.current = null
+    }
+    pendingMove.current = null
     hostHandle.current?.stop('local')
     controllerHandle.current?.stop('local')
     hostHandle.current = null
     controllerHandle.current = null
+    controllerTransport.current = null
     setMode('home')
     setStatus('idle')
     setMyCode(null)
@@ -184,15 +208,46 @@ export function usePerchSession(): PerchController {
     controllerHandle.current?.sendInput(event)
   }, [])
 
+  const getVideoStats = useCallback(
+    () => controllerTransport.current?.getVideoReceiveStats() ?? Promise.resolve(null),
+    []
+  )
+
+  // Drop any buffered pointer-move without sending it. Called before a discrete
+  // event (click/scroll) that carries its own coordinates, so the stale move
+  // can't land after it and yank the cursor back.
+  const cancelPendingMove = useCallback(() => {
+    if (moveFrame.current !== null) {
+      cancelAnimationFrame(moveFrame.current)
+      moveFrame.current = null
+    }
+    pendingMove.current = null
+  }, [])
+
+  const flushMove = useCallback(() => {
+    moveFrame.current = null
+    const p = pendingMove.current
+    if (!p) return
+    pendingMove.current = null
+    send({ type: 'pointer-move', x: p.x, y: p.y })
+  }, [send])
+
   const sendPointerMove = useCallback(
-    (nx: number, ny: number) => send({ type: 'pointer-move', x: unit(nx), y: unit(ny) }),
-    [send]
+    (nx: number, ny: number) => {
+      pendingMove.current = { x: unit(nx), y: unit(ny) }
+      if (moveFrame.current === null) moveFrame.current = requestAnimationFrame(flushMove)
+    },
+    [flushMove]
   )
 
   const sendPointerButton = useCallback(
-    (button: PointerButton, pressed: boolean, nx: number, ny: number) =>
-      send({ type: 'pointer-button', button, pressed, x: unit(nx), y: unit(ny) }),
-    [send]
+    (button: PointerButton, pressed: boolean, nx: number, ny: number) => {
+      // The button event carries the current position, so any buffered move is
+      // redundant — drop it to keep ordering tight.
+      cancelPendingMove()
+      send({ type: 'pointer-button', button, pressed, x: unit(nx), y: unit(ny) })
+    },
+    [send, cancelPendingMove]
   )
 
   const sendScroll = useCallback(
@@ -218,6 +273,7 @@ export function usePerchSession(): PerchController {
     host,
     connect,
     disconnect,
+    getVideoStats,
     sendPointerMove,
     sendPointerButton,
     sendScroll,

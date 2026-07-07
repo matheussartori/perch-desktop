@@ -41,6 +41,8 @@ export class JoinSessionUseCase {
     const session = Session.controller(code)
     const cleanups: Array<() => void> = []
     let inputChannel: DataChannel | null = null
+    let moveChannel: DataChannel | null = null
+    let moveChannelOpen = false
     let offered = false
 
     const emit = () => onStatus?.(session.status)
@@ -66,8 +68,17 @@ export class JoinSessionUseCase {
     )
     cleanups.push(() => clearTimeout(peerTimer))
 
-    // Open the channel we will stream input over (offerer side).
+    // Open the channels we will stream input over (offerer side). Discrete
+    // events (clicks, keys, scroll) ride the reliable ordered channel; pointer
+    // moves ride a lossy one — a lost move is superseded milliseconds later by
+    // the next, so retransmitting it would only delay fresher positions.
     inputChannel = transport.createDataChannel('input')
+    moveChannel = transport.createDataChannel('input-move', { lossy: true })
+    cleanups.push(
+      moveChannel.onOpen(() => {
+        moveChannelOpen = true
+      })
+    )
 
     cleanups.push(transport.onRemoteStream(onRemoteStream))
     cleanups.push(transport.onIceCandidate((candidate) => signaling.send({ kind: 'ice', candidate })))
@@ -133,6 +144,7 @@ export class JoinSessionUseCase {
     } catch (cause) {
       for (const c of cleanups) c()
       inputChannel?.close()
+      moveChannel?.close()
       transport.close()
       signaling.close()
       throw cause
@@ -141,13 +153,18 @@ export class JoinSessionUseCase {
     return {
       session,
       sendInput: (event: InputEvent) => {
-        if (session.status === 'live') inputChannel?.send(InputEventCodec.encode(event))
+        if (session.status !== 'live') return
+        // Until the lossy channel reports open, moves fall back to reliable.
+        const channel =
+          event.type === 'pointer-move' && moveChannelOpen ? moveChannel : inputChannel
+        channel?.send(InputEventCodec.encode(event))
       },
       stop: (reason = 'local') => {
         if (reason === 'error') session.fail()
         else session.end(reason)
         for (const c of cleanups) c()
         inputChannel?.close()
+        moveChannel?.close()
         transport.close()
         signaling.close()
         emit()

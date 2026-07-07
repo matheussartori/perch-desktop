@@ -78,6 +78,16 @@ export class NutJsInputController implements InputController {
   /** Codes we have already warned about, so the log isn't flooded per keystroke. */
   private readonly warnedCodes = new Set<string>()
 
+  /**
+   * Cached host resolution. Querying nut-js `screen.width()/height()` is a native
+   * round-trip, and doing it on every pointer-move (60+/sec) throttles how fast
+   * we can drain input — the dominant cause of cursor lag. The grid changes only
+   * when a display is (un)plugged, so a short TTL keeps us correct without paying
+   * the native cost per event.
+   */
+  private cachedScreen: { width: number; height: number; at: number } | null = null
+  private static readonly SCREEN_TTL_MS = 1000
+
   constructor() {
     // Zero auto-delays: remote control needs each event applied immediately,
     // not paced for human-visible "typing" animations.
@@ -132,8 +142,21 @@ export class NutJsInputController implements InputController {
 
   /** Map normalized [0,1] coordinates to the host's actual pixel grid. */
   private async toPixels(x: number, y: number): Promise<Point> {
-    const [width, height] = await Promise.all([screen.width(), screen.height()])
+    const { width, height } = await this.resolution()
     return new Point(Math.round(x * width), Math.round(y * height))
+  }
+
+  /**
+   * Host resolution, cached with a short TTL. Avoids two native round-trips per
+   * pointer-move while still picking up a display change within a second.
+   */
+  private async resolution(): Promise<{ width: number; height: number }> {
+    const now = Date.now()
+    const cached = this.cachedScreen
+    if (cached && now - cached.at < NutJsInputController.SCREEN_TTL_MS) return cached
+    const [width, height] = await Promise.all([screen.width(), screen.height()])
+    this.cachedScreen = { width, height, at: now }
+    return this.cachedScreen
   }
 
   private warnUnknownCode(code: string): void {

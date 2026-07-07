@@ -7,7 +7,13 @@
  * Handler registration uses Sets so multiple subscribers can observe the same
  * event; the returned Unsubscribe removes just that handler.
  */
-import type { DataChannel, MediaTransport, TransportState } from '@domain/media/MediaTransport'
+import type {
+  DataChannel,
+  DataChannelOptions,
+  MediaTransport,
+  TransportState,
+  VideoReceiveStats
+} from '@domain/media/MediaTransport'
 import type { Unsubscribe } from '@domain/signaling/SignalingChannel'
 
 /**
@@ -18,6 +24,66 @@ import type { Unsubscribe } from '@domain/signaling/SignalingChannel'
  * public internet, where a symmetric NAT will drop the peer-to-peer connection.
  */
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
+
+/**
+ * Encoder bitrate ceiling for the screen track. Explicit so bandwidth
+ * estimation ramps to a steady target instead of hunting; 8 Mbps comfortably
+ * carries 1080p60 screen content over a LAN.
+ */
+const MAX_VIDEO_BITRATE_BPS = 8_000_000
+
+/**
+ * Ask the receive side to render frames as soon as they arrive instead of
+ * smoothing them through the default jitter buffer — the single largest
+ * controller-side latency saving (~90ms typical). `jitterBufferTarget` is the
+ * standard knob; `playoutDelayHint` is its Chromium predecessor and is what
+ * flips the renderer onto its low-latency video path. Neither is in the DOM
+ * typings yet, hence the cast. Trade-off: on a jittery link this prefers
+ * stutter over lag — the right call for interactive control.
+ */
+function tuneReceiverForLowDelay(receiver: RTCRtpReceiver): void {
+  const tunable = receiver as RTCRtpReceiver & {
+    jitterBufferTarget?: number | null
+    playoutDelayHint?: number | null
+  }
+  try {
+    tunable.jitterBufferTarget = 0
+    tunable.playoutDelayHint = 0
+  } catch {
+    // Runtime without these knobs — defaults still work, just with more delay.
+  }
+}
+
+/**
+ * Put H.264 first in the offer so the host encodes with the platform hardware
+ * encoder (VideoToolbox / MediaFoundation) when available — lower per-frame
+ * encode time and far less CPU than the default software VP8. The rest of the
+ * capability list stays in the offer, so negotiation still succeeds when
+ * either side lacks H.264.
+ */
+function preferHardwareVideoCodecs(transceiver: RTCRtpTransceiver): void {
+  const caps = RTCRtpReceiver.getCapabilities?.('video')
+  if (!caps || caps.codecs.length === 0) return
+  const h264 = caps.codecs.filter((c) => c.mimeType.toLowerCase() === 'video/h264')
+  if (h264.length === 0) return
+  const rest = caps.codecs.filter((c) => c.mimeType.toLowerCase() !== 'video/h264')
+  try {
+    transceiver.setCodecPreferences([...h264, ...rest])
+  } catch (error) {
+    console.warn('WebRtcMediaTransport: could not set codec preferences.', error)
+  }
+}
+
+/** Counters sampled from inbound-rtp to turn cumulative totals into rates. */
+type InboundSample = {
+  timestamp: number
+  framesDecoded: number
+  jitterBufferDelay: number
+  jitterBufferEmittedCount: number
+  totalDecodeTime: number
+}
+
+const num = (value: unknown): number | null => (typeof value === 'number' ? value : null)
 
 function resolveIceServers(): RTCIceServer[] {
   const raw = import.meta.env['VITE_ICE_SERVERS']
@@ -42,10 +108,14 @@ export class WebRtcMediaTransport implements MediaTransport {
   /** Dedupe: `ontrack` fires per track, but a stream should surface once. */
   private readonly seenStreams = new Set<MediaStream>()
 
+  /** Previous inbound-rtp sample, so getVideoReceiveStats can report rates. */
+  private lastInbound: InboundSample | null = null
+
   constructor(iceServers: RTCIceServer[] = resolveIceServers()) {
     this.pc = new RTCPeerConnection({ iceServers })
 
     this.pc.ontrack = (event: RTCTrackEvent) => {
+      tuneReceiverForLowDelay(event.receiver)
       const stream = event.streams[0]
       if (!stream || this.seenStreams.has(stream)) return
       this.seenStreams.add(stream)
@@ -82,8 +152,13 @@ export class WebRtcMediaTransport implements MediaTransport {
     return () => this.remoteStreamHandlers.delete(handler)
   }
 
-  createDataChannel(label: string): DataChannel {
-    return this.wrapChannel(this.pc.createDataChannel(label, { ordered: true }))
+  createDataChannel(label: string, options?: DataChannelOptions): DataChannel {
+    // Lossy = ordered but never retransmitted (maxRetransmits: 0): a dropped
+    // packet is skipped instead of head-of-line blocking newer messages.
+    const init: RTCDataChannelInit = options?.lossy
+      ? { ordered: true, maxRetransmits: 0 }
+      : { ordered: true }
+    return this.wrapChannel(this.pc.createDataChannel(label, init))
   }
 
   onDataChannel(handler: (channel: DataChannel) => void): Unsubscribe {
@@ -94,8 +169,9 @@ export class WebRtcMediaTransport implements MediaTransport {
   async createOffer(): Promise<string> {
     // Offerer (controller) receives the host's media, so declare recv-only
     // transceivers up front — otherwise the host's tracks aren't negotiated.
-    this.pc.addTransceiver('video', { direction: 'recvonly' })
+    const video = this.pc.addTransceiver('video', { direction: 'recvonly' })
     this.pc.addTransceiver('audio', { direction: 'recvonly' })
+    preferHardwareVideoCodecs(video)
     const offer = await this.pc.createOffer()
     await this.pc.setLocalDescription(offer)
     if (!offer.sdp) throw new Error('Failed to generate offer SDP.')
@@ -107,8 +183,89 @@ export class WebRtcMediaTransport implements MediaTransport {
     await this.pc.setRemoteDescription({ type: 'offer', sdp: remoteOffer })
     const answer = await this.pc.createAnswer()
     await this.pc.setLocalDescription(answer)
+    // Sender encodings only exist once the local description is set.
+    this.tuneVideoSenders()
     if (!answer.sdp) throw new Error('Failed to generate answer SDP.')
     return answer.sdp
+  }
+
+  /**
+   * Host-side encoder policy: under load, sacrifice resolution before frame
+   * rate — a laggy cursor hurts remote control more than briefly soft text —
+   * and cap the bitrate so bandwidth estimation settles instead of hunting.
+   */
+  private tuneVideoSenders(): void {
+    for (const sender of this.pc.getSenders()) {
+      if (sender.track?.kind !== 'video') continue
+      const params = sender.getParameters()
+      params.degradationPreference = 'maintain-framerate'
+      const encoding = params.encodings[0]
+      if (encoding) encoding.maxBitrate = MAX_VIDEO_BITRATE_BPS
+      sender.setParameters(params).catch((error: unknown) => {
+        // Non-fatal: the stream still flows on Chromium's default policy.
+        console.warn('WebRtcMediaTransport: failed to tune video sender.', error)
+      })
+    }
+  }
+
+  async getVideoReceiveStats(): Promise<VideoReceiveStats | null> {
+    const receiver = this.pc.getReceivers().find((r) => r.track.kind === 'video')
+    if (!receiver) return null
+    let report: RTCStatsReport
+    try {
+      report = await receiver.getStats()
+    } catch {
+      return null // Connection closing/closed — nothing to report.
+    }
+
+    const entries = new Map<string, Record<string, unknown>>()
+    report.forEach((value: Record<string, unknown>, key: string) => entries.set(key, value))
+    let inbound: Record<string, unknown> | null = null
+    for (const entry of entries.values()) {
+      if (entry['type'] === 'inbound-rtp') {
+        inbound = entry
+        break
+      }
+    }
+    if (!inbound) return null
+
+    const sample: InboundSample = {
+      timestamp: num(inbound['timestamp']) ?? 0,
+      framesDecoded: num(inbound['framesDecoded']) ?? 0,
+      jitterBufferDelay: num(inbound['jitterBufferDelay']) ?? 0,
+      jitterBufferEmittedCount: num(inbound['jitterBufferEmittedCount']) ?? 0,
+      totalDecodeTime: num(inbound['totalDecodeTime']) ?? 0
+    }
+    const prev = this.lastInbound
+    this.lastInbound = sample
+
+    const codecId = inbound['codecId']
+    const codecEntry = typeof codecId === 'string' ? entries.get(codecId) : undefined
+    const mime = codecEntry?.['mimeType']
+
+    const stats: VideoReceiveStats = {
+      framesPerSecond: null,
+      jitterBufferMs: null,
+      decodeMs: null,
+      frameWidth: num(inbound['frameWidth']),
+      frameHeight: num(inbound['frameHeight']),
+      codec: typeof mime === 'string' ? mime.replace(/^video\//i, '') : null
+    }
+
+    // Cumulative counters → rates over the window since the previous call.
+    if (prev && sample.timestamp > prev.timestamp) {
+      const seconds = (sample.timestamp - prev.timestamp) / 1000
+      const frames = sample.framesDecoded - prev.framesDecoded
+      const emitted = sample.jitterBufferEmittedCount - prev.jitterBufferEmittedCount
+      if (frames > 0) {
+        stats.framesPerSecond = frames / seconds
+        stats.decodeMs = ((sample.totalDecodeTime - prev.totalDecodeTime) / frames) * 1000
+      }
+      if (emitted > 0) {
+        stats.jitterBufferMs = ((sample.jitterBufferDelay - prev.jitterBufferDelay) / emitted) * 1000
+      }
+    }
+    return stats
   }
 
   async acceptAnswer(remoteAnswer: string): Promise<void> {

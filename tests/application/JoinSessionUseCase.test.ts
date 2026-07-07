@@ -35,11 +35,13 @@ const connectHost = async (
 }
 
 describe('JoinSessionUseCase', () => {
-  it('joins signaling as controller and opens the input data channel', async () => {
+  it('joins signaling as controller and opens the input data channels', async () => {
     const { signaling, transport, useCase } = setup()
     await connectHost(signaling, useCase)
     expect(signaling.joined).toEqual({ code: 'ABCDEFGHJ', role: 'controller' })
-    expect(transport.createdChannels).toHaveLength(1)
+    // Reliable channel for discrete events, lossy sibling for pointer moves.
+    expect(transport.createdChannels.map((c) => c.label)).toEqual(['input', 'input-move'])
+    expect(transport.createdChannels.map((c) => c.lossy)).toEqual([false, true])
   })
 
   it('rejects and tears down if no host joins before the timeout', async () => {
@@ -87,6 +89,26 @@ describe('JoinSessionUseCase', () => {
     handle.sendInput(event)
 
     expect(channel.sent).toEqual([InputEventCodec.encode(event)])
+  })
+
+  it('routes pointer moves over the lossy channel once it opens', async () => {
+    const { signaling, transport, useCase } = setup()
+    const handle = await connectHost(signaling, useCase)
+    const input = transport.createdChannels[0]!
+    const moves = transport.createdChannels[1]!
+    transport.emitState('connected')
+
+    // Before the lossy channel opens, moves fall back to the reliable one.
+    handle.sendInput({ type: 'pointer-move', x: 0.1, y: 0.2 })
+    expect(input.sent).toHaveLength(1)
+    expect(moves.sent).toHaveLength(0)
+
+    moves.emitOpen()
+    handle.sendInput({ type: 'pointer-move', x: 0.3, y: 0.4 })
+    handle.sendInput({ type: 'pointer-button', button: 'left', pressed: true, x: 0.3, y: 0.4 })
+
+    expect(moves.sent).toEqual([InputEventCodec.encode({ type: 'pointer-move', x: 0.3, y: 0.4 })])
+    expect(input.sent).toHaveLength(2) // the early move + the button press
   })
 
   it('ends when the host leaves', async () => {
